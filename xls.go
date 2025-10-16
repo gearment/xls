@@ -4,10 +4,10 @@ import (
 	"io"
 	"os"
 
-	"github.com/extrame/ole2"
+	"github.com/gearment/ole2"
 )
 
-//Open one xls file
+// Open one xls file
 func Open(file string, charset string) (*WorkBook, error) {
 	if fi, err := os.Open(file); err == nil {
 		return OpenReader(fi, charset)
@@ -16,7 +16,7 @@ func Open(file string, charset string) (*WorkBook, error) {
 	}
 }
 
-//Open one xls file and return the closer
+// Open one xls file and return the closer
 func OpenWithCloser(file string, charset string) (*WorkBook, io.Closer, error) {
 	if fi, err := os.Open(file); err == nil {
 		wb, err := OpenReader(fi, charset)
@@ -26,7 +26,7 @@ func OpenWithCloser(file string, charset string) (*WorkBook, io.Closer, error) {
 	}
 }
 
-//Open xls file from reader
+// Open xls file from reader
 func OpenReader(reader io.ReadSeeker, charset string) (wb *WorkBook, err error) {
 	var ole *ole2.Ole
 	if ole, err = ole2.Open(reader, charset); err == nil {
@@ -52,7 +52,7 @@ func OpenReader(reader io.ReadSeeker, charset string) (wb *WorkBook, err error) 
 				}
 			}
 			if book != nil {
-				wb = newWorkBookFromOle2(ole.OpenFile(book, root))
+				wb = newWorkBookFromOle2(ole.OpenFile(book, root), charset)
 				return
 			}
 		}

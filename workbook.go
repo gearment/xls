@@ -3,13 +3,14 @@ package xls
 import (
 	"bytes"
 	"encoding/binary"
-	"golang.org/x/text/encoding/charmap"
 	"io"
 	"os"
 	"unicode/utf16"
+
+	"golang.org/x/text/encoding/charmap"
 )
 
-//xls workbook type
+// xls workbook type
 type WorkBook struct {
 	Is5ver   bool
 	Type     uint16
@@ -26,14 +27,16 @@ type WorkBook struct {
 	continue_rich  uint16
 	continue_apsb  uint32
 	dateMode       uint16
+	charset        string
 }
 
-//read workbook from ole2 file
-func newWorkBookFromOle2(rs io.ReadSeeker) *WorkBook {
+// read workbook from ole2 file
+func newWorkBookFromOle2(rs io.ReadSeeker, charset string) *WorkBook {
 	wb := new(WorkBook)
 	wb.Formats = make(map[uint16]*Format)
 	// wb.bts = bts
 	wb.rs = rs
+	wb.charset = charset
 	wb.sheets = make([]*WorkSheet, 0)
 	wb.Parse(rs)
 	return wb
@@ -162,16 +165,52 @@ func (wb *WorkBook) parseBof(buf io.ReadSeeker, b *bof, pre *bof, offset_pre int
 	}
 	return
 }
-func decodeWindows1251(enc []byte) string {
-	dec := charmap.Windows1251.NewDecoder()
-	out, _ := dec.Bytes(enc)
+func (w *WorkBook) decodeCharset(enc []byte) string {
+	// If charset is empty, use windows-1252 as default (most common for Western/Vietnamese)
+	if w.charset == "" {
+		w.charset = "windows-1252"
+	}
+
+	var decoder *charmap.Charmap
+	switch w.charset {
+	case "windows-1251", "cp1251":
+		decoder = charmap.Windows1251
+	case "windows-1252", "cp1252":
+		decoder = charmap.Windows1252
+	case "windows-1258", "cp1258":
+		decoder = charmap.Windows1258
+	case "utf-8", "UTF-8":
+		// For UTF-8, treat each byte as a rune (Latin-1/ISO-8859-1 style)
+		// because XLS compressed strings are single-byte per character
+		decoder = charmap.ISO8859_1
+	case "iso-8859-1", "latin1":
+		decoder = charmap.ISO8859_1
+	case "iso-8859-2", "latin2":
+		decoder = charmap.ISO8859_2
+	case "iso-8859-5":
+		decoder = charmap.ISO8859_5
+	case "koi8-r":
+		decoder = charmap.KOI8R
+	default:
+		// Fallback to windows-1252 by default (most common for Western/Latin scripts)
+		decoder = charmap.Windows1252
+	}
+
+	dec := decoder.NewDecoder()
+	out, err := dec.Bytes(enc)
+	if err != nil {
+		// If decode fails, try with windows-1252 as fallback
+		dec = charmap.Windows1252.NewDecoder()
+		out, _ = dec.Bytes(enc)
+	}
 	return string(out)
 }
+
 func (w *WorkBook) get_string(buf io.ReadSeeker, size uint16) (res string, err error) {
 	if w.Is5ver {
 		var bts = make([]byte, size)
 		_, err = buf.Read(bts)
-		res = decodeWindows1251(bts)
+		res = w.decodeCharset(bts)
 		//res = string(bts)
 	} else {
 		var richtext_num = uint16(0)
@@ -218,12 +257,9 @@ func (w *WorkBook) get_string(buf io.ReadSeeker, size uint16) (res string, err e
 				err = io.EOF
 			}
 
-			var bts1 = make([]uint16, n)
-			for k, v := range bts[:n] {
-				bts1[k] = uint16(v)
-			}
-			runes := utf16.Decode(bts1)
-			res = string(runes)
+			// When compressed (1 byte per char), decode using charset instead of simple conversion
+			// This fixes issues with Vietnamese and other multi-byte characters
+			res = w.decodeCharset(bts[:n])
 		}
 		if richtext_num > 0 {
 			var bts []byte
@@ -258,13 +294,13 @@ func (w *WorkBook) addSheet(sheet *boundsheet, buf io.ReadSeeker) {
 	w.sheets = append(w.sheets, &WorkSheet{bs: sheet, Name: name, wb: w, Visibility: TWorkSheetVisibility(sheet.Visible)})
 }
 
-//reading a sheet from the compress file to memory, you should call this before you try to get anything from sheet
+// reading a sheet from the compress file to memory, you should call this before you try to get anything from sheet
 func (w *WorkBook) prepareSheet(sheet *WorkSheet) {
 	w.rs.Seek(int64(sheet.bs.Filepos), 0)
 	sheet.parse(w.rs)
 }
 
-//Get one sheet by its number
+// Get one sheet by its number
 func (w *WorkBook) GetSheet(num int) *WorkSheet {
 	if num < len(w.sheets) {
 		s := w.sheets[num]
@@ -277,14 +313,14 @@ func (w *WorkBook) GetSheet(num int) *WorkSheet {
 	}
 }
 
-//Get the number of all sheets, look into example
+// Get the number of all sheets, look into example
 func (w *WorkBook) NumSheets() int {
 	return len(w.sheets)
 }
 
-//helper function to read all cells from file
-//Notice: the max value is the limit of the max capacity of lines.
-//Warning: the helper function will need big memeory if file is large.
+// helper function to read all cells from file
+// Notice: the max value is the limit of the max capacity of lines.
+// Warning: the helper function will need big memeory if file is large.
 func (w *WorkBook) ReadAllCells(max int) (res [][]string) {
 	res = make([][]string, 0)
 	for _, sheet := range w.sheets {

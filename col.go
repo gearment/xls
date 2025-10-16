@@ -8,10 +8,10 @@ import (
 
 	"time"
 
-	yymmdd "github.com/extrame/goyymmdd"
+	yymmdd "github.com/gearment/goyymmdd"
 )
 
-//content type
+// content type
 type contentHandler interface {
 	String(*WorkBook) []string
 	FirstCol() uint16
