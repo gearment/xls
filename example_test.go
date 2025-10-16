@@ -10,7 +10,7 @@ func ExampleOpen() {
 	}
 }
 
-func ExampleWorkBook_NumberSheets() {
+func ExampleWorkBook_NumSheets() {
 	if xlFile, err := Open("Table.xls", "utf-8"); err == nil {
 		for i := 0; i < xlFile.NumSheets(); i++ {
 			sheet := xlFile.GetSheet(i)
@@ -19,7 +19,7 @@ func ExampleWorkBook_NumberSheets() {
 	}
 }
 
-//Output: read the content of first two cols in each row
+// Output: read the content of first two cols in each row
 func ExampleWorkBook_GetSheet() {
 	if xlFile, err := Open("Table.xls", "utf-8"); err == nil {
 		if sheet1 := xlFile.GetSheet(0); sheet1 != nil {
