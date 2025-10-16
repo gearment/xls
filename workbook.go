@@ -166,33 +166,27 @@ func (wb *WorkBook) parseBof(buf io.ReadSeeker, b *bof, pre *bof, offset_pre int
 	return
 }
 func (w *WorkBook) decodeCharset(enc []byte) string {
-	// If charset is empty, use windows-1252 as default (most common for Western/Vietnamese)
-	if w.charset == "" {
-		w.charset = "windows-1252"
+	var decoder *charmap.Charmap
+
+	// Priority 1: Use codepage from file if available (BIFF5/BIFF8)
+	if w.Codepage != 0 {
+		decoder = w.getDecoderFromCodepage(w.Codepage)
+		if decoder != nil {
+			dec := decoder.NewDecoder()
+			out, err := dec.Bytes(enc)
+			if err == nil {
+				return string(out)
+			}
+		}
 	}
 
-	var decoder *charmap.Charmap
-	switch w.charset {
-	case "windows-1251", "cp1251":
-		decoder = charmap.Windows1251
-	case "windows-1252", "cp1252":
-		decoder = charmap.Windows1252
-	case "windows-1258", "cp1258":
-		decoder = charmap.Windows1258
-	case "utf-8", "UTF-8":
-		// For UTF-8, treat each byte as a rune (Latin-1/ISO-8859-1 style)
-		// because XLS compressed strings are single-byte per character
-		decoder = charmap.ISO8859_1
-	case "iso-8859-1", "latin1":
-		decoder = charmap.ISO8859_1
-	case "iso-8859-2", "latin2":
-		decoder = charmap.ISO8859_2
-	case "iso-8859-5":
-		decoder = charmap.ISO8859_5
-	case "koi8-r":
-		decoder = charmap.KOI8R
-	default:
-		// Fallback to windows-1252 by default (most common for Western/Latin scripts)
+	// Priority 2: Use charset parameter
+	if w.charset != "" {
+		decoder = w.getDecoderFromCharsetName(w.charset)
+	}
+
+	// Priority 3: Default fallback
+	if decoder == nil {
 		decoder = charmap.Windows1252
 	}
 
@@ -204,6 +198,78 @@ func (w *WorkBook) decodeCharset(enc []byte) string {
 		out, _ = dec.Bytes(enc)
 	}
 	return string(out)
+}
+
+func (w *WorkBook) getDecoderFromCodepage(codepage uint16) *charmap.Charmap {
+	// Common codepages
+	// See: https://docs.microsoft.com/en-us/windows/win32/intl/code-page-identifiers
+	switch codepage {
+	case 1252: // Windows Latin 1 (Western European)
+		return charmap.Windows1252
+	case 1250: // Windows Latin 2 (Central European)
+		return charmap.Windows1250
+	case 1251: // Windows Cyrillic
+		return charmap.Windows1251
+	case 1253: // Windows Greek
+		return charmap.Windows1253
+	case 1254: // Windows Turkish
+		return charmap.Windows1254
+	case 1255: // Windows Hebrew
+		return charmap.Windows1255
+	case 1256: // Windows Arabic
+		return charmap.Windows1256
+	case 1257: // Windows Baltic
+		return charmap.Windows1257
+	case 1258: // Windows Vietnamese
+		return charmap.Windows1258
+	case 874: // Windows Thai
+		return charmap.Windows874
+	case 10000: // Mac Roman
+		return charmap.Macintosh
+	case 28591: // ISO 8859-1 Latin 1
+		return charmap.ISO8859_1
+	case 28592: // ISO 8859-2 Latin 2
+		return charmap.ISO8859_2
+	case 28595: // ISO 8859-5 Cyrillic
+		return charmap.ISO8859_5
+	case 28599: // ISO 8859-9 Turkish
+		return charmap.ISO8859_9
+	case 28605: // ISO 8859-15 Latin 9
+		return charmap.ISO8859_15
+	case 20866: // KOI8-R Russian
+		return charmap.KOI8R
+	case 21866: // KOI8-U Ukrainian
+		return charmap.KOI8U
+	default:
+		return nil
+	}
+}
+
+func (w *WorkBook) getDecoderFromCharsetName(charset string) *charmap.Charmap {
+	switch charset {
+	case "windows-1251", "cp1251":
+		return charmap.Windows1251
+	case "windows-1252", "cp1252":
+		return charmap.Windows1252
+	case "windows-1258", "cp1258":
+		return charmap.Windows1258
+	case "utf-8", "UTF-8":
+		// For UTF-8, treat each byte as a rune (Latin-1/ISO-8859-1 style)
+		// because XLS compressed strings are single-byte per character
+		return charmap.ISO8859_1
+	case "iso-8859-1", "latin1":
+		return charmap.ISO8859_1
+	case "iso-8859-2", "latin2":
+		return charmap.ISO8859_2
+	case "iso-8859-5":
+		return charmap.ISO8859_5
+	case "koi8-r":
+		return charmap.KOI8R
+	case "macintosh", "mac-roman":
+		return charmap.Macintosh
+	default:
+		return nil
+	}
 }
 
 func (w *WorkBook) get_string(buf io.ReadSeeker, size uint16) (res string, err error) {
